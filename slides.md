@@ -2,10 +2,10 @@
 ## Introduction to Postgres functions and triggers
 
 ---
-<img class="r-stretch" src="./machine.gif">
+<img class="r-stretch" src="./assets/machine.gif">
 
 ----
-<img class="r-stretch" src="./machine-postgres.png">
+<img class="r-stretch" src="./assets/machine-postgres.png">
 ---
 ## Built-in Functions
 
