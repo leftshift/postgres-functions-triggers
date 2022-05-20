@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+
+    <title>reveal-md</title>
+    <link rel="shortcut icon" href="./favicon.ico" />
+    <link rel="stylesheet" href="./dist/reset.css" />
+    <link rel="stylesheet" href="./dist/reveal.css" />
+    <link rel="stylesheet" href="./dist/theme/white.css" id="theme" />
+    <link rel="stylesheet" href="./css/highlight/zenburn.css" />
+
+
+  </head>
+  <body>
+    <div class="reveal">
+      <div class="slides"><section  data-markdown><script type="text/template"># The Rube Goldberg Database
+## Introduction to Postgres functions and triggers
+</script></section><section ><section data-markdown><script type="text/template"><img class="r-stretch" src="./assets/machine.gif">
+</script></section><section data-markdown><script type="text/template"><img class="r-stretch" src="./assets/machine-postgres.png"></script></section></section><section ><section data-markdown><script type="text/template">## Built-in Functions
+</script></section><section data-markdown><script type="text/template">
+```sql
+> SELECT id, username, lower(username)
+> FROM users;
+```
+| _id_ | _username_ | _lower_   |
+|------|------------|-----------|
+| 1    | LEFTshift  | leftshift |
+
+</script></section><section data-markdown><script type="text/template">
+```sql
+> SELECT 2+2;
+4
+
+```
+</script></section></section><section ><section data-markdown><script type="text/template">
+### `lower(text) → text`
+
+```sql
+> SELECT lower('GPN!');
+gpn!
+```
+</script></section><section data-markdown><script type="text/template">
+### `abs(numeric) → numeric`
+
+```sql
+> SELECT abs(-42);
+42
+```
+
+</script></section><section data-markdown><script type="text/template">
+Functions have __static types__.
+</script></section></section><section ><section data-markdown><script type="text/template">
+What happens if we use a wrong type?
+</script></section><section data-markdown><script type="text/template">
+```sql
+> SELECT lower(5);
+
+ERROR:  function lower(integer) does not exist
+LINE 1: SELECT lower(5);
+               ^
+HINT:  No function matches the given name and argument types.
+       You might need to add explicit type casts.
+
+```
+</script></section><section data-markdown><script type="text/template">
+Functions can be __overloaded__.
+
+Postgres calls appropriate implementation.
+</script></section><section data-markdown><script type="text/template">
+### `round(numeric) -> numeric`
+
+```sql
+> SELECT round(1311.5);
+1312
+```
+</script></section><section data-markdown><script type="text/template">
+### `round(`*`v`*`  numeric, `*`s`*` integer) → numeric`
+
+```sql
+> SELECT round(3.141592, 2)
+3.14
+```
+</script></section></section><section ><section data-markdown><script type="text/template">
+### `coalesce(value: T [, ...]) → T`
+
+```sql
+> SELECT name,
+         coalesce(description, long_description, 'no description')
+  FROM product;
+```
+</script></section><section data-markdown><script type="text/template">
+Functions can be __variadic__.
+</script></section></section><section  data-markdown><script type="text/template">
+### Similar but different:
+
+Aggregate functions like `sum()`, `avg()`
+</script></section><section ><section data-markdown><script type="text/template">
+## Your own functions!
+
+* PL/pgSQL
+* Python
+* Perl
+* ...
+</script></section><section data-markdown><script type="text/template">
+We'll stick to PL/pgSQL:
+* available by default
+* superset of SQL
+* additional constructs like IF and loops
+
+</script></section></section><section ><section data-markdown><script type="text/template">
+## Example: Recipes
+</script></section><section data-markdown><script type="text/template">#### `ice_cream_recipes`
+| _name_: `text` | _ingredients_: `text[]`            |
+|--------------  |--------------------------        |
+| chocolate      | {milk, sugar, chocolate}         |
+| nutella        | {milk, sugar, cocoa, hazelnut}   |
+
+</script></section><section data-markdown><script type="text/template">
+### Ugh, hazelnut
+
+```sql
+> SELECT *
+  FROM ice_cream_recipes
+  WHERE NOT 'hazelnut' = ANY(ingredients);
+```
+
+| _name_        | _ingredients_                    |
+|-------------- |--------------------------        |
+| chocolate     | {milk, sugar, chocolate}         |
+</script></section><section data-markdown><script type="text/template">#### `cake_recipes`
+| _name_: `text`    | _ingredients_: `text`         |
+|---------------    |------------------------------ |
+| cheesecake        | flour, sugar, egg, margarine  |
+| hazelnut cake     | egg, sugar, hazelnut          |
+
+
+</script></section><section data-markdown><script type="text/template">Need a different query :/
+
+```sql
+> SELECT *
+  FROM cake_recipes
+  WHERE ingredients NOT LIKE '%hazelnut%';
+```
+
+| _name_            | _ingredients_                 |
+|---------------    |------------------------------ |
+| cheesecake        | flour, sugar, egg, margarine  |
+
+</script></section></section><section ><section data-markdown><script type="text/template">
+### Our first function
+* Idea: Create function <br/> `contains(container, element) → boolean`
+* Support different types of `container`s with overloads
+</script></section><section data-markdown><script type="text/template">#### Contains for `text`
+
+```sql [1-8|1-2|3,7|4-6|1-8]
+CREATE FUNCTION contains(container text, element text)
+RETURNS boolean
+AS $$
+BEGIN
+  RETURN container LIKE '%' || element || '%';
+END;
+$$
+LANGUAGE plpgsql;
+```
+</script></section><section data-markdown><script type="text/template">#### Contains for `text[]`
+```sql [1-8|1,5|1-8]
+CREATE FUNCTION contains(container text[], element text)
+RETURNS boolean
+AS $$
+BEGIN
+  RETURN element = ANY(container);
+END;
+$$
+LANGUAGE plpgsql;
+```
+</script></section><section data-markdown><script type="text/template">### New Query
+```sql
+> SELECT name, ingredients
+> FROM cake_recipes
+> WHERE NOT contains(ingredients, 'hazelnut');
+```
+
+Also works for `ice_cream_recipes`!
+<!-- .element: class="fragment" -->
+</script></section></section><section ><section data-markdown><script type="text/template">## Takeaways
+* make queries more generic
+* write complex logic once
+* can reduce roundtrips
+* much more powerful: insert/update/delete, SDL
+
+</script></section><section data-markdown><script type="text/template">## Downsides
+* may do unexpected stuff
+* pl/pgsql knowledge needed
+* → documentation, good names!
+
+</script></section></section><section ><section data-markdown><script type="text/template">## Triggers
+* automatically call function upon operation
+* intercept, modify values, …
+* has access to values before and after update
+</script></section><section data-markdown><script type="text/template">### Changelog
+Idea: Write all updates to changelog table
+</script></section><section data-markdown><script type="text/template">#### `article`
+| _id_: `int` | _body_: `text` |
+|-------------|----------------|
+|             |                |
+
+<br/>
+
+#### `article_changelog`
+| _id_: `int` | _time_: `timestamp` | _old_body_: `text` | _new_body_: `text` |
+|-------------|---------------------|--------------------|--------------------|
+|             |                     |                    |                    |
+</script></section><section data-markdown><script type="text/template">
+#### Changelog Function
+
+```sql [1-11|1-2|5-8|1-11]
+CREATE FUNCTION log_article_update()
+RETURNS trigger
+AS $$
+BEGIN
+  INSERT INTO article_changelog (id, time, old_body, new_body)
+  VALUES (NEW.id, current_timestamp, OLD.body, NEW.body);
+
+  RETURN NEW;
+END;
+$$
+LANGUAGE plpgsql;
+```
+</script></section><section data-markdown><script type="text/template">
+#### Changelog Trigger
+
+```sql
+CREATE TRIGGER log_update
+AFTER UPDATE ON article
+FOR EACH ROW
+EXECUTE FUNCTION log_article_update();
+```
+
+</script></section><section data-markdown><script type="text/template">#### `article` before update
+
+| _id_: `int` | _body_: `text` |
+|-------------|----------------|
+| 42          | Hello GPN!     |
+
+</script></section><section data-markdown><script type="text/template">#### UPDATE
+
+```sql
+UPDATE article
+SET body = 'Goodbye!'
+WHERE id = 42;
+```
+</script></section><section data-markdown><script type="text/template">| _id_: `int` | _body_: `text` |
+|-------------|----------------|
+| 42          | Goodbye!       |
+
+<br/>
+
+| _id_: `int` | _time_: `timestamp` | _old_body_: `text` | _new_body_: `text` |
+|-------------|---------------------|--------------------|--------------------|
+| 42          | 2022-05-20 21:24:31 | Hello GPN!         | Goodbye!           |
+</script></section></section><section ><section data-markdown><script type="text/template">## Takeaways
+* move functionality into database
+* ensure complex consistency criteria
+* ensure consistency across clients
+* 'transactions for free'
+
+</script></section><section data-markdown><script type="text/template">## Downsides
+* spooky
+* harder to debug and test
+* can negatively impact performance
+</script></section></section><section  data-markdown><script type="text/template">## Closing thoughts
+* with great power comes great Rube Goldberg potential
+* consider other features first
+    * (materialized) views
+    * built-in functions
+* can be super powerful and elegant!
+</script></section></div>
+    </div>
+
+    <script src="./dist/reveal.js"></script>
+
+    <script src="./plugin/markdown/markdown.js"></script>
+    <script src="./plugin/highlight/highlight.js"></script>
+    <script src="./plugin/zoom/zoom.js"></script>
+    <script src="./plugin/notes/notes.js"></script>
+    <script src="./plugin/math/math.js"></script>
+    <script>
+      function extend() {
+        var target = {};
+        for (var i = 0; i < arguments.length; i++) {
+          var source = arguments[i];
+          for (var key in source) {
+            if (source.hasOwnProperty(key)) {
+              target[key] = source[key];
+            }
+          }
+        }
+        return target;
+      }
+
+      // default options to init reveal.js
+      var defaultOptions = {
+        controls: true,
+        progress: true,
+        history: true,
+        center: true,
+        transition: 'default', // none/fade/slide/convex/concave/zoom
+        plugins: [
+          RevealMarkdown,
+          RevealHighlight,
+          RevealZoom,
+          RevealNotes,
+          RevealMath
+        ]
+      };
+
+      // options from URL query string
+      var queryOptions = Reveal().getQueryHash() || {};
+
+      var options = extend(defaultOptions, {"width":1024,"height":576,"margin":0,"controls":false,"transition":"slide"}, queryOptions);
+    </script>
+
+
+    <script>
+      Reveal.initialize(options);
+    </script>
+  </body>
+</html>
